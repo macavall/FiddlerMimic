@@ -9,7 +9,9 @@ using System.Threading.Tasks;
 
 class Program
 {
-    static void Main(string[] args)
+    public static List<SslStream> sslStreams = new List<SslStream>();
+
+    static async Task Main(string[] args)
     {
         int port = 8888;
         TcpListener listener = new TcpListener(IPAddress.Any, port);
@@ -18,7 +20,7 @@ class Program
 
         while (true)
         {
-            var clientTask = listener.AcceptTcpClientAsync();
+            var clientTask = await listener.AcceptTcpClientAsync();
             HandleClient(clientTask);
         }
     }
@@ -42,9 +44,9 @@ class Program
         return sslStream;
     }
 
-    static async void HandleClient(Task<TcpClient> clientTask)
+    static async void HandleClient(TcpClient clientTask)
     {
-        using (TcpClient client = await clientTask)
+        using (TcpClient client = clientTask)
         {
             using (NetworkStream clientStream = client.GetStream())
             {
@@ -84,11 +86,22 @@ class Program
                                 // Establish SSL/TLS connection with the server
                                 await serverSslStream.AuthenticateAsClientAsync(host);
 
+                                // Capture and show the decrypted body of the POST request
+                                var clientRequestBody = await ReadRequestBody(clientSslStream);
+                                Console.WriteLine("Decrypted POST Request Body:");
+                                Console.WriteLine(clientRequestBody);
+
+                                _ = Task.Factory.StartNew(async () =>
+                                {
+                                    await sslLoop();
+                                });
+
                                 // Forward data between client and server, now using SSL/TLS streams
                                 var clientToServer = clientSslStream.CopyToAsync(serverSslStream);
                                 var serverToClient = serverSslStream.CopyToAsync(clientSslStream);
 
-                                await Task.WhenAny(clientToServer, serverToClient);
+                                await clientToServer;
+                                await serverToClient;
                             }
                         }
                     }
@@ -99,6 +112,50 @@ class Program
                 }
             }
         }
-        clientTask.Dispose();
+    }
+
+    // Show the contents of List<SslStream> sslStreams
+    static async Task sslLoop ()
+    {
+        foreach(SslStream sslStream in sslStreams)
+        {
+            using (var memoryStream = new MemoryStream())
+            {
+                Console.WriteLine(memoryStream.Length);
+
+                byte[] buffer = new byte[8192];
+                int bytesRead;
+                while ((bytesRead = await sslStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead));
+                }
+
+                //await sslStream.CopyToAsync(memoryStream, bufferSize: 16384);
+                memoryStream.Seek(0, SeekOrigin.Begin);
+                using (var reader = new StreamReader(memoryStream, Encoding.UTF8))
+                {
+                    string requestBody = await reader.ReadToEndAsync();
+                    Console.WriteLine(requestBody);
+                }
+            }
+        }
+    }
+
+    static async Task<string> ReadRequestBody(SslStream clientSslStream)
+    {
+        sslStreams.Add(clientSslStream);
+
+        //using (var memoryStream = new MemoryStream())
+        //{
+        //    await clientSslStream.CopyToAsync(memoryStream);
+        //    memoryStream.Seek(0, SeekOrigin.Begin);
+        //    using (var reader = new StreamReader(memoryStream, Encoding.UTF8))
+        //    {
+        //        string requestBody = await reader.ReadToEndAsync();
+        //        return requestBody;
+        //    }
+        //}
+
+        return "done";
     }
 }
