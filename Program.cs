@@ -96,12 +96,14 @@ class Program
                                     await sslLoop();
                                 });
 
-                                // Forward data between client and server, now using SSL/TLS streams
-                                var clientToServer = clientSslStream.CopyToAsync(serverSslStream);
-                                var serverToClient = serverSslStream.CopyToAsync(clientSslStream);
+                                return;
 
-                                await clientToServer;
-                                await serverToClient;
+                                // Forward data between client and server, now using SSL/TLS streams
+                                //var clientToServer = clientSslStream.CopyToAsync(serverSslStream);
+                                //var serverToClient = serverSslStream.CopyToAsync(clientSslStream);
+
+                                //await clientToServer;
+                                //await serverToClient;
                             }
                         }
                     }
@@ -121,16 +123,7 @@ class Program
         {
             using (var memoryStream = new MemoryStream())
             {
-                Console.WriteLine(memoryStream.Length);
-
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = await sslStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
-                {
-                    await memoryStream.WriteAsync(buffer.AsMemory(0, bytesRead));
-                }
-
-                //await sslStream.CopyToAsync(memoryStream, bufferSize: 16384);
+                await sslStream.CopyToAsync(memoryStream);
                 memoryStream.Seek(0, SeekOrigin.Begin);
                 using (var reader = new StreamReader(memoryStream, Encoding.UTF8))
                 {
