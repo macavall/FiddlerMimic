@@ -9,8 +9,6 @@ using System.Threading.Tasks;
 
 class Program
 {
-    public static List<SslStream> sslStreams = new List<SslStream>();
-
     static async Task Main(string[] args)
     {
         int port = 8888;
@@ -18,11 +16,16 @@ class Program
         listener.Start();
         Console.WriteLine($"Listening on port {port}...");
 
-        while (true)
-        {
-            var clientTask = await listener.AcceptTcpClientAsync();
-            HandleClient(clientTask);
-        }
+        var clientTask = await listener.AcceptTcpClientAsync();
+        await HandleClient(clientTask);
+
+        Console.ReadLine();
+
+        //while (true)
+        //{
+        //    var clientTask = await listener.AcceptTcpClientAsync();
+        //    HandleClient(clientTask);
+        //}
     }
 
     static SslStream CreateSslStream(TcpClient client, X509Certificate2 cert)
@@ -31,7 +34,6 @@ class Program
         var sslStream = new SslStream(stream, false);
 
         // Authenticate as server with the provided certificate
-
         try
         {
             sslStream.AuthenticateAsServer(cert, clientCertificateRequired: false, checkCertificateRevocation: true);
@@ -44,7 +46,7 @@ class Program
         return sslStream;
     }
 
-    static async void HandleClient(TcpClient clientTask)
+    static async Task HandleClient(TcpClient clientTask)
     {
         using (TcpClient client = clientTask)
         {
@@ -86,6 +88,16 @@ class Program
                                 // Establish SSL/TLS connection with the server
                                 await serverSslStream.AuthenticateAsClientAsync(host);
 
+                                // Capture and show the decrypted body of the POST request
+                                var clientRequestBody = await ReadRequestBody(clientSslStream);
+                                var clientResponseBody = await ReadResponseBody(clientSslStream);
+                                
+                                Console.WriteLine("Decrypted POST Request Body:");
+                                Console.WriteLine("\n\n" + clientRequestBody + "\n\n");
+
+                                Console.WriteLine("Decrypted POST Response Body:");
+                                Console.WriteLine("\n\n" + clientResponseBody + "\n\n");
+
                                 // Forward data between client and server, now using SSL/TLS streams
                                 var clientToServer = clientSslStream.CopyToAsync(serverSslStream);
                                 var serverToClient = serverSslStream.CopyToAsync(clientSslStream);
@@ -93,11 +105,6 @@ class Program
                                 await Task.WhenAny(clientToServer, serverToClient);
                             }
                         }
-
-                        // Capture and show the decrypted body of the POST request
-                        var clientRequestBody = await ReadRequestBody(clientSslStream);
-                        Console.WriteLine("Decrypted POST Request Body:");
-                        Console.WriteLine(clientRequestBody);
                     }
                     catch (Exception ex)
                     {
@@ -108,28 +115,8 @@ class Program
         }
     }
 
-    // Show the contents of List<SslStream> sslStreams
-    static async Task sslLoop ()
-    {
-        foreach(SslStream sslStream in sslStreams)
-        {
-            using (var memoryStream = new MemoryStream())
-            {
-                await sslStream.CopyToAsync(memoryStream);
-                memoryStream.Seek(0, SeekOrigin.Begin);
-                using (var reader = new StreamReader(memoryStream, Encoding.UTF8))
-                {
-                    string requestBody = await reader.ReadToEndAsync();
-                    Console.WriteLine(requestBody);
-                }
-            }
-        }
-    }
-
     static async Task<string> ReadRequestBody(SslStream clientSslStream)
     {
-        sslStreams.Add(clientSslStream);
-
         using (var memoryStream = new MemoryStream())
         {
             await clientSslStream.CopyToAsync(memoryStream);
@@ -140,7 +127,19 @@ class Program
                 return requestBody;
             }
         }
+    }
 
-        return "FAIL";
+    static async Task<string> ReadResponseBody(SslStream clientSslStream)
+    {
+        using (var memoryStream = new MemoryStream())
+        {
+            await clientSslStream.CopyToAsync(memoryStream);
+            memoryStream.Seek(0, SeekOrigin.Begin);
+            using (var reader = new StreamReader(memoryStream, Encoding.UTF8))
+            {
+                string responseBody = await reader.ReadToEndAsync();
+                return responseBody;
+            }
+        }
     }
 }
